@@ -1,0 +1,13 @@
+{
+  "name": "@max-health-inc/fhir-igs",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Publisher for the org's shared FHIR IG packages (@max-health-inc/fhir-*).",
+  "type": "module",
+  "scripts": {
+    "list": "node scripts/list-igs.js"
+  },
+  "devDependencies": {
+    "babelfhir-ts": "1.5.13"
+  }
+}
