@@ -119,7 +119,12 @@ jobs:
           # (A committed script, not `node -e` — `node -e` with argv segfaults on
           # the runner's Node.)
           VERS=$(gh api "orgs/Max-Health-Inc/packages/npm/fhir-${{ matrix.name }}/versions" --paginate --jq '.[].name' 2>/dev/null | tr '\n' ' ' || true)
-          VER=$(node scripts/next-version.js "$BASE" $VERS)
+          # Pure bash (no node — `node <file>` segfaults on these runners): max of
+          # base+existing, then bump patch until free.
+          VER=$(printf '%s\n' "$BASE" $VERS | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -t. -k1,1n -k2,2n -k3,3n | tail -1)
+          while printf '%s\n' $VERS | grep -qx "$VER"; do
+            IFS=. read -r A B C <<< "$VER"; VER="${A}.${B}.$((C + 1))"
+          done
           echo "Publishing $PKG@$VER (existing: ${VERS:-none})"
           echo "publish=true" >> "$GITHUB_OUTPUT"
           echo "version=$VER" >> "$GITHUB_OUTPUT"
