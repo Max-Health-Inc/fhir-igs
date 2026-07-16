@@ -3,15 +3,17 @@ name: Publish IG Packages
 # Generates each IG in igs.json with the PINNED babelfhir-ts (package.json) and
 # publishes it as @max-health-inc/fhir-<name> to GitHub Packages.
 #
-# Input-driven: a package whose _igBuildKey ("<spec>|babelfhir@<pinned>|<flags>")
-# matches the last published version is skipped (no regenerate). This repo is
-# decoupled from babelfhir-ts's own release cadence — a new babelfhir-ts release
-# does NOT churn these packages; bumping the generator is the deliberate
-# devDependency bump in package.json.
+# Idempotency: GitHub Packages does NOT preserve/return custom package.json
+# fields, so a build key stored in the manifest is invisible after publish. We
+# instead mark each published build with a `bk-<hash>` **dist-tag** (dist-tags
+# are returned by the registry) and skip when that tag is already present. So a
+# package is republished only when its build key — "<spec>|babelfhir@<pinned>|
+# <flags>" — actually changes (new IG version, generator bump, or flag change).
+# Decoupled from babelfhir-ts's own release cadence.
 #
 # Auth: the packages are linked to another repo (BabelFHIR-TS created them), so
 # the built-in GITHUB_TOKEN can't write them. Use GH_PACKAGES_TOKEN — a classic
-# PAT with write:packages — for the view + publish steps.
+# PAT with write:packages — for the view / publish / dist-tag / REST steps.
 
 on:
   push:
@@ -38,7 +40,6 @@ env:
   FHIR_CACHE_ROOT: .cache
 
 jobs:
-  # ── Build the matrix from the registry ──────────────────────────────────────
   setup:
     runs-on: ubuntu-latest
     outputs:
@@ -57,7 +58,6 @@ jobs:
           echo "matrix=$PACKAGES" >> "$GITHUB_OUTPUT"
           echo "IGs ($SEL): $PACKAGES"
 
-  # ── One input-driven publish per IG ─────────────────────────────────────────
   publish:
     needs: setup
     runs-on: ubuntu-latest
@@ -86,10 +86,11 @@ jobs:
           key: tx-expansions-v1
           restore-keys: tx-expansions-v1
 
-      - name: Decide whether to publish (build key vs last published)
+      - name: Decide whether to publish (build-key dist-tag)
         id: decide
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN }}
+          GH_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN }}
         run: |
           PKG="@max-health-inc/fhir-${{ matrix.name }}"
           SPEC="${{ matrix.spec }}"; BASE="${SPEC##*@}"
@@ -97,41 +98,33 @@ jobs:
           BABEL=$(node -p "require('./package.json').devDependencies['babelfhir-ts']")
           LANG=$(node -p "require('./igs.json').displayLanguages")
           KEY="${SPEC}|babelfhir@${BABEL}|tx:https://tx.fhir.org/${FHIRV};fhir:${FHIRV};lang:${LANG}"
+          TAG="bk-$(printf '%s' "$KEY" | sha1sum | cut -c1-16)"
           echo "pkg=$PKG" >> "$GITHUB_OUTPUT"
-          echo "key=$KEY" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "lang=$LANG" >> "$GITHUB_OUTPUT"
-          echo "build key: $KEY"
+          echo "build key: $KEY  ->  dist-tag: $TAG"
 
-          LATEST=$(npm view "$PKG" version 2>/dev/null || true)
-          if [ -z "$LATEST" ]; then
-            echo "First publish of $PKG at $BASE"
-            echo "publish=true" >> "$GITHUB_OUTPUT"
-            echo "version=$BASE" >> "$GITHUB_OUTPUT"
-          else
-            PUB_KEY=$(npm view "$PKG@$LATEST" _igBuildKey 2>/dev/null || true)
-            if [ "$PUB_KEY" = "$KEY" ]; then
-              echo "$PKG unchanged (same spec + generator + flags as $LATEST) — skipping."
-              echo "publish=false" >> "$GITHUB_OUTPUT"
-            else
-              # Next FREE version at/above max(BASE, LATEST). npm view's `latest`
-              # tag can lag the true highest version after accumulated republishes,
-              # so bump while the exact version already exists (avoids E409).
-              VER=$(npx --yes semver "$BASE" "$LATEST" | tail -1)
-              while npm view "$PKG@$VER" version >/dev/null 2>&1; do
-                VER=$(npx --yes semver -i patch "$VER")
-              done
-              echo "Publishing $PKG@$VER (was $LATEST; build key changed)"
-              echo "publish=true" >> "$GITHUB_OUTPUT"
-              echo "version=$VER" >> "$GITHUB_OUTPUT"
-            fi
+          # Already published for this exact build key? (dist-tags survive GH Packages)
+          TAGS=$(npm view "$PKG" dist-tags --json 2>/dev/null || echo '{}')
+          if node -e "process.exit(JSON.parse(process.argv[1]||'{}')[process.argv[2]]?0:1)" "$TAGS" "$TAG"; then
+            echo "$PKG already published for this build ($TAG) — skipping."
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
+
+          # Next FREE version >= max(BASE, existing versions). Use the versions
+          # REST API (the npm `latest` dist-tag lags after republishes).
+          VERS=$(gh api "orgs/Max-Health-Inc/packages/npm/fhir-${{ matrix.name }}/versions" --paginate --jq '.[].name' 2>/dev/null || true)
+          VER="$BASE"
+          for v in $VERS; do VER=$(npx --yes semver "$VER" "$v" | tail -1); done
+          if printf '%s\n' $VERS | grep -qx "$VER"; then VER=$(npx --yes semver -i patch "$VER"); fi
+          echo "Publishing $PKG@$VER"
+          echo "publish=true" >> "$GITHUB_OUTPUT"
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
 
       - name: Generate IG package (${{ matrix.name }})
         if: steps.decide.outputs.publish == 'true'
         run: |
-          # Uses the PINNED babelfhir-ts from node_modules (npm ci). --tx-server
-          # expands ValueSets (reusing the restored cache); --display-language emits
-          # the get{VS}Display helpers; --skip-install just packs lib/<pkg>-generated.tgz.
           npx babelfhir-ts install "${{ matrix.spec }}" \
             --skip-install \
             --fhir-version "${{ matrix.fhirVersion }}" \
@@ -142,10 +135,10 @@ jobs:
           rm -rf dist-ig && mkdir dist-ig
           tar xzf "$TGZ" -C dist-ig --strip-components=1
 
-      - name: Stamp name / version / build key
+      - name: Stamp name / version
         if: steps.decide.outputs.publish == 'true'
         run: |
-          node -e "const fs=require('fs'),f='dist-ig/package.json',p=JSON.parse(fs.readFileSync(f));p.name='${{ steps.decide.outputs.pkg }}';p.version='${{ steps.decide.outputs.version }}';p._igBuildKey='${{ steps.decide.outputs.key }}';p._igSpec='${{ matrix.spec }}';p.publishConfig={registry:'https://npm.pkg.github.com'};p.repository={type:'git',url:'https://github.com/Max-Health-Inc/fhir-igs.git'};fs.writeFileSync(f,JSON.stringify(p,null,2))"
+          node -e "const fs=require('fs'),f='dist-ig/package.json',p=JSON.parse(fs.readFileSync(f));p.name='${{ steps.decide.outputs.pkg }}';p.version='${{ steps.decide.outputs.version }}';p.publishConfig={registry:'https://npm.pkg.github.com'};p.repository={type:'git',url:'https://github.com/Max-Health-Inc/fhir-igs.git'};fs.writeFileSync(f,JSON.stringify(p,null,2))"
 
       - name: Publish to GitHub Packages
         if: steps.decide.outputs.publish == 'true'
@@ -153,3 +146,9 @@ jobs:
         run: npm publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN }}
+
+      - name: Mark build-key dist-tag
+        if: steps.decide.outputs.publish == 'true'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN }}
+        run: npm dist-tag add "${{ steps.decide.outputs.pkg }}@${{ steps.decide.outputs.version }}" "${{ steps.decide.outputs.tag }}"
