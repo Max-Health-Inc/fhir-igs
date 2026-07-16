@@ -104,26 +104,20 @@ jobs:
           echo "lang=$LANG" >> "$GITHUB_OUTPUT"
           echo "build key: $KEY  ->  dist-tag: $TAG"
 
-          # Already published for this exact build key? (dist-tags survive GH Packages)
-          TAGS=$(npm view "$PKG" dist-tags --json 2>/dev/null || echo '{}')
-          if node -e "process.exit(JSON.parse(process.argv[1]||'{}')[process.argv[2]]?0:1)" "$TAGS" "$TAG"; then
-            echo "$PKG already published for this build ($TAG) — skipping."
+          # Already published for this exact build key? Query the dist-tag directly
+          # (dist-tags survive GH Packages; custom package.json fields do not).
+          EXIST=$(npm view "$PKG" "dist-tags.$TAG" 2>/dev/null || true)
+          if [ -n "$EXIST" ]; then
+            echo "$PKG already published for this build ($TAG -> $EXIST) — skipping."
             echo "publish=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          # Next FREE version >= max(BASE, existing). Computed in node (the npm
-          # `latest` tag lags; a bash npx-semver loop was fragile). Existing
-          # versions come from the REST API.
+          # Next FREE version >= max(BASE, existing versions), from the REST list.
+          # (A committed script, not `node -e` — `node -e` with argv segfaults on
+          # the runner's Node.)
           VERS=$(gh api "orgs/Max-Health-Inc/packages/npm/fhir-${{ matrix.name }}/versions" --paginate --jq '.[].name' 2>/dev/null | tr '\n' ' ' || true)
-          VER=$(node -e '
-            const base=process.argv[1], vers=process.argv.slice(2);
-            const P=s=>s.split(".").map(Number), C=(a,b)=>{a=P(a);b=P(b);for(let i=0;i<3;i++){const d=(a[i]||0)-(b[i]||0);if(d)return d}return 0};
-            let max=base; for(const v of vers) if(/^[0-9]+\.[0-9]+\.[0-9]+$/.test(v)&&C(v,max)>0) max=v;
-            let ver=max; const has=v=>vers.includes(v);
-            while(has(ver)){const p=P(ver);p[2]++;ver=p.join(".")}
-            console.log(ver);
-          ' "$BASE" $VERS)
+          VER=$(node scripts/next-version.js "$BASE" $VERS)
           echo "Publishing $PKG@$VER (existing: ${VERS:-none})"
           echo "publish=true" >> "$GITHUB_OUTPUT"
           echo "version=$VER" >> "$GITHUB_OUTPUT"
@@ -143,8 +137,9 @@ jobs:
 
       - name: Stamp name / version
         if: steps.decide.outputs.publish == 'true'
+        working-directory: dist-ig
         run: |
-          node -e "const fs=require('fs'),f='dist-ig/package.json',p=JSON.parse(fs.readFileSync(f));p.name='${{ steps.decide.outputs.pkg }}';p.version='${{ steps.decide.outputs.version }}';p.publishConfig={registry:'https://npm.pkg.github.com'};p.repository={type:'git',url:'https://github.com/Max-Health-Inc/fhir-igs.git'};fs.writeFileSync(f,JSON.stringify(p,null,2))"
+          npm pkg set name="${{ steps.decide.outputs.pkg }}" version="${{ steps.decide.outputs.version }}" publishConfig.registry="https://npm.pkg.github.com"
 
       - name: Publish to GitHub Packages
         if: steps.decide.outputs.publish == 'true'
