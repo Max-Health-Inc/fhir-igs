@@ -19,7 +19,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'igs.json'
+      - 'config.json'
       - 'package.json'
       - 'scripts/**'
       - '.github/workflows/publish.yml'
@@ -96,7 +96,7 @@ jobs:
           SPEC="${{ matrix.spec }}"; BASE="${SPEC##*@}"
           FHIRV="${{ matrix.fhirVersion }}"
           BABEL=$(node -p "require('./package.json').devDependencies['babelfhir-ts']")
-          LANG=$(node -p "require('./igs.json').displayLanguages")
+          LANG=$(node -p "require('./config.json').displayLanguages")
           KEY="${SPEC}|babelfhir@${BABEL}|tx:https://tx.fhir.org/${FHIRV};fhir:${FHIRV};lang:${LANG}"
           TAG="bk-$(printf '%s' "$KEY" | sha1sum | cut -c1-16)"
           echo "pkg=$PKG" >> "$GITHUB_OUTPUT"
