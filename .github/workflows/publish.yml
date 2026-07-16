@@ -8,6 +8,10 @@ name: Publish IG Packages
 # decoupled from babelfhir-ts's own release cadence — a new babelfhir-ts release
 # does NOT churn these packages; bumping the generator is the deliberate
 # devDependency bump in package.json.
+#
+# Auth: the packages are linked to another repo (BabelFHIR-TS created them), so
+# the built-in GITHUB_TOKEN can't write them. Use GH_PACKAGES_TOKEN — a classic
+# PAT with write:packages — for the view + publish steps.
 
 on:
   push:
@@ -85,7 +89,7 @@ jobs:
       - name: Decide whether to publish (build key vs last published)
         id: decide
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN }}
         run: |
           PKG="@max-health-inc/fhir-${{ matrix.name }}"
           SPEC="${{ matrix.spec }}"; BASE="${SPEC##*@}"
@@ -147,4 +151,4 @@ jobs:
         working-directory: dist-ig
         run: npm publish
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN }}
