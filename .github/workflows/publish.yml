@@ -92,6 +92,7 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN }}
           GH_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN }}
         run: |
+          set -x
           PKG="@max-health-inc/fhir-${{ matrix.name }}"
           SPEC="${{ matrix.spec }}"; BASE="${SPEC##*@}"
           FHIRV="${{ matrix.fhirVersion }}"
