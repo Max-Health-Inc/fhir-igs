@@ -75,9 +75,10 @@ jobs:
           registry-url: https://npm.pkg.github.com
           scope: '@max-health-inc'
 
-      - name: Install pinned babelfhir-ts
-        run: npm ci
-
+      # No `npm ci` — installing babelfhir-ts's native/postinstall deps (esbuild,
+      # fhirpath) under the runner's allow-scripts policy destabilizes node so
+      # later `node <file>`/npm calls segfault (exit 139). Run the generator via
+      # `npx babelfhir-ts@<pinned>` on demand instead (still version-pinned).
       - name: Restore tx-server ValueSet expansions
         uses: actions/cache@v4
         with:
@@ -125,7 +126,8 @@ jobs:
       - name: Generate IG package (${{ matrix.name }})
         if: steps.decide.outputs.publish == 'true'
         run: |
-          npx babelfhir-ts install "${{ matrix.spec }}" \
+          BABEL=$(node -p "require('./package.json').devDependencies['babelfhir-ts']")
+          npx --yes "babelfhir-ts@$BABEL" install "${{ matrix.spec }}" \
             --skip-install \
             --fhir-version "${{ matrix.fhirVersion }}" \
             --tx-server "https://tx.fhir.org/${{ matrix.fhirVersion }}" \
