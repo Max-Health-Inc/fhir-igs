@@ -113,12 +113,13 @@ jobs:
               echo "$PKG unchanged (same spec + generator + flags as $LATEST) — skipping."
               echo "publish=false" >> "$GITHUB_OUTPUT"
             else
-              HIGHER=$(npx --yes semver "$BASE" "$LATEST" | tail -1)
-              if [ "$HIGHER" = "$BASE" ] && [ "$BASE" != "$LATEST" ]; then
-                VER="$BASE"
-              else
-                VER=$(npx --yes semver -i patch "$LATEST")
-              fi
+              # Next FREE version at/above max(BASE, LATEST). npm view's `latest`
+              # tag can lag the true highest version after accumulated republishes,
+              # so bump while the exact version already exists (avoids E409).
+              VER=$(npx --yes semver "$BASE" "$LATEST" | tail -1)
+              while npm view "$PKG@$VER" version >/dev/null 2>&1; do
+                VER=$(npx --yes semver -i patch "$VER")
+              done
               echo "Publishing $PKG@$VER (was $LATEST; build key changed)"
               echo "publish=true" >> "$GITHUB_OUTPUT"
               echo "version=$VER" >> "$GITHUB_OUTPUT"
