@@ -103,11 +103,12 @@ jobs:
           echo "lang=$LANG" >> "$GITHUB_OUTPUT"
           echo "build key: $KEY  ->  dist-tag: $TAG"
 
-          # Already published for this exact build key? Query the dist-tag directly
-          # (dist-tags survive GH Packages; custom package.json fields do not).
-          EXIST=$(npm view "$PKG" "dist-tags.$TAG" 2>/dev/null || true)
-          if [ -n "$EXIST" ]; then
-            echo "$PKG already published for this build ($TAG -> $EXIST) — skipping."
+          # Already published for this exact build key? Read the registry dist-tags
+          # via curl (no npm/node — npm view segfaults on this runner). dist-tags
+          # survive GH Packages; custom package.json fields do not.
+          DT=$(curl -sf -H "Authorization: Bearer ${GH_TOKEN}" "https://npm.pkg.github.com/-/package/@max-health-inc%2ffhir-${{ matrix.name }}/dist-tags" 2>/dev/null || echo '{}')
+          if printf '%s' "$DT" | grep -q "\"$TAG\""; then
+            echo "$PKG already published for this build ($TAG) — skipping."
             echo "publish=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
