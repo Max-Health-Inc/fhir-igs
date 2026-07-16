@@ -28,7 +28,7 @@
     { "name": "au-core", "spec": "hl7.fhir.au.core@1.0.0" },
     { "name": "pixm", "spec": "ihe.iti.pixm@3.0.4" },
     { "name": "mhd", "spec": "ihe.iti.mhd@4.2.2" },
-    { "name": "ae-research", "spec": "hl7.fhir.uv.ae-research-ig@1.0.1" },
+    { "name": "ae-research", "spec": "hl7.fhir.uv.ae-research-ig@1.0.1", "fhirVersion": "r5" },
     { "name": "emedicinal-product", "spec": "hl7.fhir.uv.emedicinal-product-info@1.0.0", "fhirVersion": "r5" },
     { "name": "de-basisprofil", "spec": "de.basisprofil.r4@1.5.0" }
   ],
