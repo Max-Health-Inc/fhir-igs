@@ -8,6 +8,6 @@
     "list": "node scripts/list-igs.js"
   },
   "devDependencies": {
-    "babelfhir-ts": "1.5.14"
+    "babelfhir-ts": "1.5.15"
   }
 }
