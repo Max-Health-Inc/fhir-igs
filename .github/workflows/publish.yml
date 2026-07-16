@@ -92,7 +92,6 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN }}
           GH_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN }}
         run: |
-          set -x
           PKG="@max-health-inc/fhir-${{ matrix.name }}"
           SPEC="${{ matrix.spec }}"; BASE="${SPEC##*@}"
           FHIRV="${{ matrix.fhirVersion }}"
@@ -116,8 +115,6 @@ jobs:
           fi
 
           # Next FREE version >= max(BASE, existing versions), from the REST list.
-          # (A committed script, not `node -e` — `node -e` with argv segfaults on
-          # the runner's Node.)
           VERS=$(gh api "orgs/Max-Health-Inc/packages/npm/fhir-${{ matrix.name }}/versions" --paginate --jq '.[].name' 2>/dev/null | tr '\n' ' ' || true)
           # Pure bash (no node — `node <file>` segfaults on these runners): max of
           # base+existing, then bump patch until free.
