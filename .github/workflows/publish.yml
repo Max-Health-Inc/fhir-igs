@@ -112,13 +112,19 @@ jobs:
             exit 0
           fi
 
-          # Next FREE version >= max(BASE, existing versions). Use the versions
-          # REST API (the npm `latest` dist-tag lags after republishes).
-          VERS=$(gh api "orgs/Max-Health-Inc/packages/npm/fhir-${{ matrix.name }}/versions" --paginate --jq '.[].name' 2>/dev/null || true)
-          VER="$BASE"
-          for v in $VERS; do VER=$(npx --yes semver "$VER" "$v" | tail -1); done
-          if printf '%s\n' $VERS | grep -qx "$VER"; then VER=$(npx --yes semver -i patch "$VER"); fi
-          echo "Publishing $PKG@$VER"
+          # Next FREE version >= max(BASE, existing). Computed in node (the npm
+          # `latest` tag lags; a bash npx-semver loop was fragile). Existing
+          # versions come from the REST API.
+          VERS=$(gh api "orgs/Max-Health-Inc/packages/npm/fhir-${{ matrix.name }}/versions" --paginate --jq '.[].name' 2>/dev/null | tr '\n' ' ' || true)
+          VER=$(node -e '
+            const base=process.argv[1], vers=process.argv.slice(2);
+            const P=s=>s.split(".").map(Number), C=(a,b)=>{a=P(a);b=P(b);for(let i=0;i<3;i++){const d=(a[i]||0)-(b[i]||0);if(d)return d}return 0};
+            let max=base; for(const v of vers) if(/^[0-9]+\.[0-9]+\.[0-9]+$/.test(v)&&C(v,max)>0) max=v;
+            let ver=max; const has=v=>vers.includes(v);
+            while(has(ver)){const p=P(ver);p[2]++;ver=p.join(".")}
+            console.log(ver);
+          ' "$BASE" $VERS)
+          echo "Publishing $PKG@$VER (existing: ${VERS:-none})"
           echo "publish=true" >> "$GITHUB_OUTPUT"
           echo "version=$VER" >> "$GITHUB_OUTPUT"
 
