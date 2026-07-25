@@ -13,9 +13,10 @@
  *
  * HOW it is read matters as much as WHERE from. This script used to regex the
  * TypeScript source, which made a formatting change in another repository a
- * silent break in IG publishing here. babelfhir-ts now emits the matrix as a
+ * silent break in IG publishing here. babelfhir-ts emits the matrix as a
  * committed artifact — parity-matrix.json — guarded on its side by a CI drift
- * check and a unit test. We consume that contract instead.
+ * check and a unit test. We consume that contract, and only that: a missing or
+ * unreadable artifact is a hard failure, never a silent guess at the IG set.
  *
  * fhir-igs keeps only its own PUBLISHING config in config.json:
  *   - displayLanguages: --display-language flag passed to the generator
@@ -36,7 +37,6 @@ const config = JSON.parse(fs.readFileSync(path.join(root, 'config.json'), 'utf8'
 
 const PARITY_REPO = 'Max-Health-Inc/BabelFHIR-TS';
 const PARITY_MATRIX_PATH = 'parity-matrix.json';
-const PARITY_SOURCE_PATH = 'src/test/parity/parityConstants.ts';
 
 /** Shape of parity-matrix.json we know how to read. */
 const SUPPORTED_SCHEMA_VERSION = 1;
@@ -51,11 +51,16 @@ function pinnedTag() {
   return `v${version}`;
 }
 
-/** Fetch a file from the pinned tag. Returns null when absent (404). */
+/** Fetch a file from the pinned tag. */
 async function fetchAtTag(tag, filePath) {
   const url = `https://raw.githubusercontent.com/${PARITY_REPO}/${tag}/${filePath}`;
   const res = await fetch(url);
-  if (res.status === 404) return null;
+  if (res.status === 404) {
+    throw new Error(
+      `${filePath} does not exist at ${tag}. It ships from babelfhir-ts 1.5.18 onward — ` +
+        `a pin older than that is no longer supported.`,
+    );
+  }
   if (!res.ok) {
     throw new Error(`Failed to fetch ${filePath} at ${tag} (${res.status} ${res.statusText}): ${url}`);
   }
@@ -81,43 +86,9 @@ function readMatrixArtifact(text) {
   return entries;
 }
 
-/**
- * TRANSITIONAL: regex the TypeScript source.
- *
- * Only reached when the pinned babelfhir-ts tag predates parity-matrix.json
- * (first shipped after 1.5.16). Delete this function, PARITY_SOURCE_PATH, and
- * the fallback branch below once the pin has moved past that release.
- */
-function parseParityMatrixSource(src) {
-  const block = src.match(/AVAILABLE_PACKAGES\s*:\s*PackageConfig\[\]\s*=\s*\[([\s\S]*?)\n\];/);
-  if (!block) throw new Error('Could not locate AVAILABLE_PACKAGES in parityConstants.ts');
-  const entries = [];
-  for (const m of block[1].matchAll(/\{([^}]*)\}/g)) {
-    const obj = m[1];
-    const name = obj.match(/name\s*:\s*'([^']+)'/)?.[1];
-    const spec = obj.match(/spec\s*:\s*'([^']+)'/)?.[1];
-    const fhirVersion = obj.match(/fhirVersion\s*:\s*'([^']+)'/)?.[1] || 'r4';
-    if (name && spec) entries.push({ name, spec, fhirVersion });
-  }
-  if (!entries.length) throw new Error('Parsed zero IGs from the parity matrix');
-  return entries;
-}
-
 async function fetchParityMatrix() {
   const tag = pinnedTag();
-
-  const artifact = await fetchAtTag(tag, PARITY_MATRIX_PATH);
-  if (artifact) return readMatrixArtifact(artifact);
-
-  const source = await fetchAtTag(tag, PARITY_SOURCE_PATH);
-  if (!source) {
-    throw new Error(`Neither ${PARITY_MATRIX_PATH} nor ${PARITY_SOURCE_PATH} exists at ${tag}`);
-  }
-  console.error(
-    `warning: ${PARITY_MATRIX_PATH} absent at ${tag} — falling back to regexing ` +
-      `${PARITY_SOURCE_PATH}. Bump the babelfhir-ts pin to a release that ships the artifact.`,
-  );
-  return parseParityMatrixSource(source);
+  return readMatrixArtifact(await fetchAtTag(tag, PARITY_MATRIX_PATH));
 }
 
 const exclude = new Set(config.exclude || []);
