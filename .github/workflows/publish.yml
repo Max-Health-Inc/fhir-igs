@@ -61,16 +61,20 @@ jobs:
       # "latest". A key containing "latest" would never change, so no IG would
       # ever be republished when the generator improves — the opposite of the
       # intent of tracking latest.
-      - name: Resolve latest babelfhir-ts
+      # Newest release that PASSED stable parity, not merely the newest on npm.
+      # One generator release becomes ~30 published packages here, and the parity
+      # gate lives in the generator's repo — see scripts/resolve-babelfhir.js.
+      # Fails closed: no parity result, no publish.
+      - name: Resolve babelfhir-ts (latest that passed parity)
         id: resolve
         run: |
-          VERSION=$(npm view babelfhir-ts version)
+          VERSION=$(node scripts/resolve-babelfhir.js --explain)
           case "$VERSION" in
             [0-9]*.[0-9]*.[0-9]*) ;;
-            *) echo "Unexpected babelfhir-ts version from npm: '$VERSION'" >&2; exit 1 ;;
+            *) echo "Unusable babelfhir-ts version: '$VERSION'" >&2; exit 1 ;;
           esac
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "Using babelfhir-ts $VERSION (latest)"
+          echo "Using babelfhir-ts $VERSION (latest with a passing stable parity result)"
 
       - name: Build IG matrix
         id: set-matrix

@@ -2,9 +2,21 @@
 
 Publishes the org's shared FHIR Implementation Guide packages — `@max-health-inc/fhir-*` — to GitHub Packages, generated with [`babelfhir-ts`](https://www.npmjs.com/package/babelfhir-ts).
 
-**Always publishes with the latest released `babelfhir-ts`.** There is no pin. Each run resolves the newest published release (`npm view babelfhir-ts version`) **once**, in the workflow's `setup` job, and hands that exact version to both the matrix builder and the generator — so a run can never key a package to one generator and build it with another.
+**Always publishes with the latest `babelfhir-ts` that passed parity.** There is no pin. Each run resolves the version **once**, in the workflow's `setup` job, and hands that exact version to both the matrix builder and the generator — so a run can never key a package to one generator and build it with another.
 
-Consequence, by design: a new babelfhir-ts release changes every package's build key, so the next run republishes every IG once with a patch bump. That is the point — the published packages track generator improvements automatically. Nothing republishes *between* releases, because the key is unchanged. Note the trade-off: a given commit of this repo no longer determines its output, since the generator version is resolved at run time rather than recorded here.
+"Latest that passed parity", not simply latest on npm. One generator release becomes ~30 published packages here, while the gate that decides whether a release actually works — 30 IGs against two external validators — runs in the generator's repo. `scripts/resolve-babelfhir.js` therefore picks the newest release with a recorded **stable parity result**:
+
+```
+https://max-health-inc.github.io/BabelFHIR-TS/history-stable.json
+```
+
+A hard parity failure leaves no parity data to publish, so no entry is written — absence *is* the "did not pass" signal. **It fails closed:** if nothing qualifies, the run stops rather than falling back to the newest npm release, because a silent fallback would defeat the point. `config.json → minParityValidation` adds an optional score floor for soft regressions; it is off by default (see the note in that file).
+
+Consequences, by design:
+
+- A new passing release changes every package's build key, so the next run republishes every IG once with a patch bump. That is the point — packages track generator improvements automatically. Nothing republishes *between* releases, because the key is unchanged.
+- A commit of this repo no longer determines its output: the generator version is resolved at run time rather than recorded here.
+- A release that never gets a parity result never gets published with, and this repo will refuse to run until one does.
 
 ## Registry (single source of truth)
 

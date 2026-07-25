@@ -59,12 +59,15 @@ function babelfhirTag() {
   return `v${version}`;
 }
 
-/** Latest published babelfhir-ts, straight from the npm registry. */
+/**
+ * Newest babelfhir-ts release that passed stable parity.
+ *
+ * Delegates to the same resolver CI uses, so a local `npm run list` cannot
+ * disagree with a real run about which release is publishable.
+ */
 function latestPublishedVersion() {
-  const out = execFileSync('npm', ['view', 'babelfhir-ts', 'version'], {
-    encoding: 'utf8',
-    shell: process.platform === 'win32',
-  });
+  const resolver = path.join(root, 'scripts', 'resolve-babelfhir.js');
+  const out = execFileSync(process.execPath, [resolver], { encoding: 'utf8' });
   return out.trim();
 }
 
