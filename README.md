@@ -6,7 +6,9 @@ Publishes the org's shared FHIR Implementation Guide packages — `@max-health-i
 
 ## Registry (single source of truth)
 
-The IG list is **derived from babelfhir-ts's validated parity matrix** (`src/test/parity/parityConstants.ts` → `AVAILABLE_PACKAGES`), fetched at the tag matching the pinned `babelfhir-ts` version. `scripts/list-igs.js` does this at CI time. Each entry → `@max-health-inc/fhir-<name>` at the IG's upstream version, generated for the FHIR version babelfhir validated it against.
+The IG list is **derived from babelfhir-ts's validated parity matrix** (`src/test/parity/parityConstants.ts` → `AVAILABLE_PACKAGES`), read from the `parity-matrix.json` artifact babelfhir-ts commits and ships, fetched at the tag matching the pinned `babelfhir-ts` version. `scripts/list-igs.js` does this at CI time. Each entry → `@max-health-inc/fhir-<name>` at the IG's upstream version, generated for the FHIR version babelfhir validated it against.
+
+`parity-matrix.json` is a **contract, not scraped source**. This script used to regex `parityConstants.ts` directly, which made a formatting change in another repository a silent break in publishing here. babelfhir-ts now guards the artifact with a CI drift check and a unit test, and declares a `schemaVersion` — this publisher refuses to run on a version it does not understand rather than guess an IG set. Pins older than the first release shipping the artifact fall back to the old regex with a warning.
 
 This deliberately has **no hand-maintained IG list** — a duplicated list drifts (e.g. an IG marked R5 in parity but defaulted to R4 here). babelfhir decides what's validated *and* what's published; bumping the `babelfhir-ts` pin picks up matrix changes.
 
