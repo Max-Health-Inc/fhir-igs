@@ -5,11 +5,12 @@
  *
  * SINGLE SOURCE OF TRUTH: the IG list is derived from babelfhir-ts's validated
  * parity matrix (src/test/parity/parityConstants.ts → AVAILABLE_PACKAGES),
- * fetched from GitHub at the tag matching the PINNED babelfhir-ts version
- * (package.json → devDependencies). This makes drift impossible: an IG (or its
- * fhirVersion) is published here exactly as babelfhir validates it. Previously a
- * hand-maintained igs.json duplicated the matrix and drifted (ae-research was
- * marked r5 in parity but defaulted to r4 here).
+ * fetched from GitHub at the tag of the babelfhir-ts release this run uses. That
+ * release is the LATEST published one, resolved at run time — see babelfhirTag().
+ * Reading the matrix at that same tag is what keeps the published set equal to
+ * what that exact generator validated. Previously a hand-maintained igs.json
+ * duplicated the matrix and drifted (ae-research was marked r5 in parity but
+ * defaulted to r4 here).
  *
  * HOW it is read matters as much as WHERE from. This script used to regex the
  * TypeScript source, which made a formatting change in another repository a
@@ -29,10 +30,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { execFileSync } from 'node:child_process';
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 
-const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
 const config = JSON.parse(fs.readFileSync(path.join(root, 'config.json'), 'utf8'));
 
 const PARITY_REPO = 'Max-Health-Inc/BabelFHIR-TS';
@@ -41,14 +42,30 @@ const PARITY_MATRIX_PATH = 'parity-matrix.json';
 /** Shape of parity-matrix.json we know how to read. */
 const SUPPORTED_SCHEMA_VERSION = 1;
 
-/** Pinned babelfhir-ts version → git tag (fhir-igs pins an exact version). */
-function pinnedTag() {
-  const pin = (pkg.devDependencies && pkg.devDependencies['babelfhir-ts']) || '';
-  const version = pin.replace(/^[^0-9]*/, '');
+/**
+ * The babelfhir-ts release this run uses, as a git tag.
+ *
+ * This repo tracks the latest release rather than pinning one, so the version is
+ * resolved rather than read from package.json. CI resolves it ONCE and passes it
+ * in via BABELFHIR_VERSION so the matrix and the generator cannot disagree — a
+ * second independent lookup could straddle a release. Falling back to a live
+ * `npm view` keeps `npm run list` working locally.
+ */
+function babelfhirTag() {
+  const version = (process.env.BABELFHIR_VERSION || '').trim() || latestPublishedVersion();
   if (!/^\d+\.\d+\.\d+/.test(version)) {
-    throw new Error(`Cannot derive a babelfhir-ts version tag from pin "${pin}" — expected an exact version.`);
+    throw new Error(`Unusable babelfhir-ts version "${version}" — expected an exact version.`);
   }
   return `v${version}`;
+}
+
+/** Latest published babelfhir-ts, straight from the npm registry. */
+function latestPublishedVersion() {
+  const out = execFileSync('npm', ['view', 'babelfhir-ts', 'version'], {
+    encoding: 'utf8',
+    shell: process.platform === 'win32',
+  });
+  return out.trim();
 }
 
 /** Fetch a file from the pinned tag. */
@@ -87,7 +104,7 @@ function readMatrixArtifact(text) {
 }
 
 async function fetchParityMatrix() {
-  const tag = pinnedTag();
+  const tag = babelfhirTag();
   return readMatrixArtifact(await fetchAtTag(tag, PARITY_MATRIX_PATH));
 }
 
