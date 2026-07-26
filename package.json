@@ -3,11 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "description": "Publisher for the org's shared FHIR IG packages (@max-health-inc/fhir-*).",
+  "comments": {
+    "babelfhir-ts": "Deliberately NOT a dependency here. This repo always publishes with the LATEST released babelfhir-ts, resolved once per run in .github/workflows/publish.yml and passed to both the matrix builder and the generator. A declaration in this file would be a second, stale source of truth for the version."
+  },
   "type": "module",
   "scripts": {
     "list": "node scripts/list-igs.js"
-  },
-  "devDependencies": {
-    "babelfhir-ts": "1.5.16"
   }
 }

@@ -1,4 +1,8 @@
 {
   "displayLanguages": "en,de,fr,es,it",
-  "exclude": []
+  "exclude": [],
+
+  "//minParityValidation": "Optional absolute floor (percent) on the LOWEST per-validator `validation` score in babelfhir-ts's stable parity history. null disables it. Presence of a parity entry is already required, which catches hard failures; this only guards soft regressions. Kept off by default because a healthy release currently scores internal 72 / firely 84 / hl7 82 — a plausible-looking floor of 80 would reject it. Set deliberately once the normal band is known.",
+  "minParityValidation": null
 }
+
