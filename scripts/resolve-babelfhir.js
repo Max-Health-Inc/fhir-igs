@@ -28,6 +28,15 @@
  * internal 72 / firely 84 / hl7 82, so a plausible-sounding floor of 80 would
  * reject a perfectly good release. Set it once you know your normal band.
  *
+ * NOR IS A BREAK PARITY CANNOT SEE. Parity validates IG CONFORMANCE, not that the
+ * generated package compiles in a consumer, so a release can pass it and still be
+ * unusable (1.6.4 did, failing with TS2688 on generated output). Failing closed is no
+ * help when the BAD version is the one that qualified.
+ *
+ * A deprecation catches that class: it is the maintainer stating outright that a
+ * version should not be used, published where any consumer can read it, and it costs
+ * one `npm view` on the candidate we were about to choose. Treated here as a veto.
+ *
  * Fails closed. If nothing qualifies we exit non-zero rather than fall back to
  * the newest npm version, because a silent fallback would defeat the whole point.
  *
@@ -118,6 +127,31 @@ function publishedVersions() {
   return new Set(Array.isArray(parsed) ? parsed : [parsed]);
 }
 
+/**
+ * The maintainer's deprecation message for one version, or null.
+ *
+ * `npm view pkg@version deprecated` prints nothing for a healthy version, so an empty
+ * result IS the "not deprecated" signal. Asked lazily, newest-first, so the normal case
+ * is a single extra registry call for the version we were about to choose.
+ *
+ * A lookup failure returns null rather than throwing: being unable to reach the registry
+ * should not veto a release parity already passed, and the publish step that follows will
+ * fail on its own if npm is genuinely unreachable.
+ */
+function deprecationOf(version) {
+  try {
+    return (
+      execFileSync('npm', ['view', `babelfhir-ts@${version}`, 'deprecated'], {
+        encoding: 'utf8',
+        shell: process.platform === 'win32',
+        stdio: ['ignore', 'pipe', 'ignore'],
+      }).trim() || null
+    );
+  } catch {
+    return null;
+  }
+}
+
 const floor = typeof config.minParityValidation === 'number' ? config.minParityValidation : null;
 note(`minParityValidation: ${floor === null ? 'disabled' : `${floor}%`}`);
 
@@ -145,18 +179,39 @@ if (candidates.length === 0) {
 candidates.sort((a, b) => compareVersions(b.version, a.version));
 
 const published = publishedVersions();
-const chosen = candidates.find((c) => published.has(c.version));
+
+// Newest-first, taking the first candidate that is both published and not withdrawn.
+// Deprecation is checked here rather than in `qualifies` because it costs a network call
+// per version, and walking in order means we normally make exactly one.
+let chosen = null;
+const deprecated = [];
+for (const candidate of candidates) {
+  if (!published.has(candidate.version)) continue;
+  const withdrawn = deprecationOf(candidate.version);
+  if (withdrawn) {
+    deprecated.push(`${candidate.version} (${withdrawn})`);
+    note(`  skip ${candidate.version}: deprecated on npm — ${withdrawn}`);
+    continue;
+  }
+  chosen = candidate;
+  break;
+}
 
 if (!chosen) {
+  const published_ = candidates.filter((c) => published.has(c.version)).map((c) => c.version);
   console.error(
-    `Parity passed for ${candidates.map((c) => c.version).join(', ')}, but none of those ` +
-      `are published on npm. Refusing to guess.`,
+    published_.length === 0
+      ? `Parity passed for ${candidates.map((c) => c.version).join(', ')}, but none of those ` +
+          `are published on npm. Refusing to guess.`
+      : `Every parity-passing, published release is deprecated: ${deprecated.join(', ')}.\n` +
+          `Refusing to publish with a version its maintainer has withdrawn.\n` +
+          `Fix: release a babelfhir-ts version that passes parity, or un-deprecate one above.`,
   );
   process.exit(1);
 }
 
 if (chosen.version !== candidates[0].version) {
-  note(`newest parity-passing ${candidates[0].version} is not on npm yet — using ${chosen.version}`);
+  note(`newest parity-passing ${candidates[0].version} was not usable — using ${chosen.version}`);
 }
 
 note(
