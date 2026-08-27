@@ -174,6 +174,20 @@ jobs:
           rm -rf dist-ig && mkdir dist-ig
           tar xzf "$TGZ" -C dist-ig --strip-components=1
 
+      # Nothing here compiled what it published. Parity gates the generator on IG
+      # CONFORMANCE, which is a different question from whether the emitted
+      # TypeScript builds — 1.6.4 passed parity and was unusable (TS2688 on
+      # generated output). Runs before the stamp so a package that does not
+      # compile never reaches `npm publish`.
+      - name: Typecheck the generated package
+        if: steps.decide.outputs.publish == 'true'
+        # Pinned by SHA rather than @main: the action lives on BabelFHIR-TS develop
+        # until the next promotion, and a SHA resolves regardless of branch — and
+        # cannot move underneath a publish. Bump it when the action changes.
+        uses: Max-Health-Inc/BabelFHIR-TS/.github/actions/typecheck-generated@8fc2760b476fd531f4c95f932be923855b3ebb6d
+        with:
+          path: dist-ig
+
       - name: Stamp name / version
         if: steps.decide.outputs.publish == 'true'
         working-directory: dist-ig
