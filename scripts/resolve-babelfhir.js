@@ -10,7 +10,7 @@
  *
  * So: take the newest release that has a recorded STABLE PARITY RESULT.
  *
- *   https://max-health-inc.github.io/BabelFHIR-TS/history-stable.json
+ *   https://babelfhir-ts.github.io/parity-report/history-stable.json
  *
  * That file is written by the `Pipeline Parity Test` workflow on `main`, one
  * entry per release, carrying the babelfhir-ts version, the package count, the
@@ -60,7 +60,7 @@ const config = JSON.parse(fs.readFileSync(path.join(root, 'config.json'), 'utf8'
  */
 const HISTORY_URL =
   process.env.PARITY_HISTORY_URL?.trim() ||
-  'https://max-health-inc.github.io/BabelFHIR-TS/history-stable.json';
+  'https://babelfhir-ts.github.io/parity-report/history-stable.json';
 
 /**
  * Oldest release we can publish with at all: parity-matrix.json — the IG list
