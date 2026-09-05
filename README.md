@@ -7,7 +7,7 @@ Publishes the org's shared FHIR Implementation Guide packages — `@max-health-i
 "Latest that passed parity", not simply latest on npm. One generator release becomes ~30 published packages here, while the gate that decides whether a release actually works — 30 IGs against two external validators — runs in the generator's repo. `scripts/resolve-babelfhir.js` therefore picks the newest release with a recorded **stable parity result**:
 
 ```
-https://max-health-inc.github.io/BabelFHIR-TS/history-stable.json
+https://babelfhir-ts.github.io/parity-report/history-stable.json
 ```
 
 A hard parity failure leaves no parity data to publish, so no entry is written — absence *is* the "did not pass" signal. **It fails closed:** if nothing qualifies, the run stops rather than falling back to the newest npm release, because a silent fallback would defeat the point. `config.json → minParityValidation` adds an optional score floor for soft regressions; it is off by default (see the note in that file).
