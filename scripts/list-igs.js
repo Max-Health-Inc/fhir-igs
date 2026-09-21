@@ -5,8 +5,8 @@
  *
  * SINGLE SOURCE OF TRUTH: the IG list is derived from babelfhir-ts's validated
  * parity matrix (src/test/parity/parityConstants.ts → AVAILABLE_PACKAGES),
- * fetched from GitHub at the tag of the babelfhir-ts release this run uses. That
- * release is the LATEST published one, resolved at run time — see babelfhirTag().
+ * read from the published tarball of the babelfhir-ts release this run uses. That
+ * release is the LATEST published one, resolved at run time — see babelfhirVersion().
  * Reading the matrix at that same tag is what keeps the published set equal to
  * what that exact generator validated. Previously a hand-maintained igs.json
  * duplicated the matrix and drifted (ae-research was marked r5 in parity but
@@ -28,6 +28,7 @@
  *   node scripts/list-igs.js ips,us-core # a subset by name
  */
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
@@ -36,8 +37,8 @@ const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 const config = JSON.parse(fs.readFileSync(path.join(root, 'config.json'), 'utf8'));
 
-const PARITY_REPO = 'Max-Health-Inc/BabelFHIR-TS';
 const PARITY_MATRIX_PATH = 'parity-matrix.json';
+const REGISTRY = process.env.NPM_REGISTRY || 'https://registry.npmjs.org';
 
 /** Shape of parity-matrix.json we know how to read. */
 const SUPPORTED_SCHEMA_VERSION = 1;
@@ -51,12 +52,12 @@ const SUPPORTED_SCHEMA_VERSION = 1;
  * second independent lookup could straddle a release. Falling back to a live
  * `npm view` keeps `npm run list` working locally.
  */
-function babelfhirTag() {
+function babelfhirVersion() {
   const version = (process.env.BABELFHIR_VERSION || '').trim() || latestPublishedVersion();
   if (!/^\d+\.\d+\.\d+/.test(version)) {
     throw new Error(`Unusable babelfhir-ts version "${version}" — expected an exact version.`);
   }
-  return `v${version}`;
+  return version;
 }
 
 /**
@@ -71,20 +72,32 @@ function latestPublishedVersion() {
   return out.trim();
 }
 
-/** Fetch a file from the pinned tag. */
-async function fetchAtTag(tag, filePath) {
-  const url = `https://raw.githubusercontent.com/${PARITY_REPO}/${tag}/${filePath}`;
-  const res = await fetch(url);
-  if (res.status === 404) {
-    throw new Error(
-      `${filePath} does not exist at ${tag}. It ships from babelfhir-ts 1.5.18 onward — ` +
-        `a pin older than that is no longer supported.`,
-    );
+/**
+ * Read the matrix out of the PUBLISHED babelfhir-ts tarball.
+ *
+ * Not from the repo: BabelFHIR-TS moved org and is private, so raw.githubusercontent 404s at every
+ * tag, for everyone. The tarball is the artifact this run generates with anyway.
+ */
+async function readMatrixFromPackage(version, filePath) {
+  const meta = await fetch(`${REGISTRY}/babelfhir-ts/${version}`);
+  if (!meta.ok) throw new Error(`babelfhir-ts@${version} not on the registry (${meta.status})`);
+  const { dist } = await meta.json();
+  if (!dist?.tarball) throw new Error(`babelfhir-ts@${version} metadata carries no tarball URL`);
+
+  const res = await fetch(dist.tarball);
+  if (!res.ok) throw new Error(`Failed to fetch ${dist.tarball} (${res.status})`);
+
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'babelfhir-matrix-'));
+  const tgz = path.join(dir, 'package.tgz');
+  try {
+    fs.writeFileSync(tgz, Buffer.from(await res.arrayBuffer()));
+    // Relative name + cwd: GNU tar reads an absolute C:\... path as a remote host.
+    return execFileSync('tar', ['-xzOf', 'package.tgz', `package/${filePath}`], { cwd: dir, encoding: 'utf8' });
+  } catch (err) {
+    throw new Error(`Could not read ${filePath} from babelfhir-ts@${version}: ${err.message}`);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
   }
-  if (!res.ok) {
-    throw new Error(`Failed to fetch ${filePath} at ${tag} (${res.status} ${res.statusText}): ${url}`);
-  }
-  return res.text();
 }
 
 /** Read the parity-matrix.json artifact — the supported path. */
@@ -107,8 +120,7 @@ function readMatrixArtifact(text) {
 }
 
 async function fetchParityMatrix() {
-  const tag = babelfhirTag();
-  return readMatrixArtifact(await fetchAtTag(tag, PARITY_MATRIX_PATH));
+  return readMatrixArtifact(await readMatrixFromPackage(babelfhirVersion(), PARITY_MATRIX_PATH));
 }
 
 const exclude = new Set(config.exclude || []);
