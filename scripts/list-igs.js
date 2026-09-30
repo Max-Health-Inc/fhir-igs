@@ -38,7 +38,8 @@ const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const config = JSON.parse(fs.readFileSync(path.join(root, 'config.json'), 'utf8'));
 
 const PARITY_MATRIX_PATH = 'parity-matrix.json';
-const REGISTRY = process.env.NPM_REGISTRY || 'https://registry.npmjs.org';
+const GENERATOR = config.generatorPackage;
+if (typeof GENERATOR !== 'string' || !GENERATOR) throw new Error('config.json names no generatorPackage');
 
 /** Shape of parity-matrix.json we know how to read. */
 const SUPPORTED_SCHEMA_VERSION = 1;
@@ -79,22 +80,22 @@ function latestPublishedVersion() {
  * tag, for everyone. The tarball is the artifact this run generates with anyway.
  */
 async function readMatrixFromPackage(version, filePath) {
-  const meta = await fetch(`${REGISTRY}/babelfhir-ts/${version}`);
-  if (!meta.ok) throw new Error(`babelfhir-ts@${version} not on the registry (${meta.status})`);
-  const { dist } = await meta.json();
-  if (!dist?.tarball) throw new Error(`babelfhir-ts@${version} metadata carries no tarball URL`);
-
-  const res = await fetch(dist.tarball);
-  if (!res.ok) throw new Error(`Failed to fetch ${dist.tarball} (${res.status})`);
-
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'babelfhir-matrix-'));
-  const tgz = path.join(dir, 'package.tgz');
   try {
-    fs.writeFileSync(tgz, Buffer.from(await res.arrayBuffer()));
+    // npm pack, not a bare fetch: the generator lives on an authenticated registry and .npmrc carries that.
+    const packed = execFileSync('npm', ['pack', `${GENERATOR}@${version}`, '--pack-destination', dir, '--json'], {
+      cwd: root,
+      encoding: 'utf8',
+      shell: process.platform === 'win32',
+    });
+    // npm <12 reports an array, npm 12 an object keyed by package name.
+    const report = JSON.parse(packed);
+    const tgz = (Array.isArray(report) ? report[0] : Object.values(report)[0])?.filename;
+    if (typeof tgz !== 'string') throw new Error('npm pack reported no tarball');
     // Relative name + cwd: GNU tar reads an absolute C:\... path as a remote host.
-    return execFileSync('tar', ['-xzOf', 'package.tgz', `package/${filePath}`], { cwd: dir, encoding: 'utf8' });
+    return execFileSync('tar', ['-xzOf', tgz, `package/${filePath}`], { cwd: dir, encoding: 'utf8' });
   } catch (err) {
-    throw new Error(`Could not read ${filePath} from babelfhir-ts@${version}: ${err.message}`);
+    throw new Error(`Could not read ${filePath} from ${GENERATOR}@${version}: ${err.message}`);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

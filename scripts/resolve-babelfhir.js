@@ -5,7 +5,7 @@
  * Not simply "newest on npm". This repo turns one generator release into ~30
  * published packages, and the gate that decides whether a release actually works
  * — the parity suite, 30 IGs against two external validators — lives in the
- * generator's own repo. Publishing straight off `npm view babelfhir-ts version`
+ * generator's own repo. Publishing straight off `npm view <generatorPackage> version`
  * would propagate a broken release to every IG package before anyone looked.
  *
  * So: take the newest release that has a recorded STABLE PARITY RESULT.
@@ -51,6 +51,8 @@ import { execFileSync } from 'node:child_process';
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
 const config = JSON.parse(fs.readFileSync(path.join(root, 'config.json'), 'utf8'));
+const GENERATOR = config.generatorPackage;
+if (typeof GENERATOR !== 'string' || !GENERATOR) throw new Error('config.json names no generatorPackage');
 
 /**
  * Where the stable parity history lives. Overridable via PARITY_HISTORY_URL so a
@@ -117,9 +119,9 @@ function qualifies(entry, floor) {
   return null;
 }
 
-/** Published versions of babelfhir-ts, so we never resolve an unpublished one. */
+/** Published versions of the generator, so we never resolve an unpublished one. */
 function publishedVersions() {
-  const out = execFileSync('npm', ['view', 'babelfhir-ts', 'versions', '--json'], {
+  const out = execFileSync('npm', ['view', GENERATOR, 'versions', '--json'], {
     encoding: 'utf8',
     shell: process.platform === 'win32',
   });
@@ -141,7 +143,7 @@ function publishedVersions() {
 function deprecationOf(version) {
   try {
     return (
-      execFileSync('npm', ['view', `babelfhir-ts@${version}`, 'deprecated'], {
+      execFileSync('npm', ['view', `${GENERATOR}@${version}`, 'deprecated'], {
         encoding: 'utf8',
         shell: process.platform === 'win32',
         stdio: ['ignore', 'pipe', 'ignore'],
@@ -202,7 +204,7 @@ if (!chosen) {
   console.error(
     published_.length === 0
       ? `Parity passed for ${candidates.map((c) => c.version).join(', ')}, but none of those ` +
-          `are published on npm. Refusing to guess.`
+          `are published as ${GENERATOR}. Refusing to guess.`
       : `Every parity-passing, published release is deprecated: ${deprecated.join(', ')}.\n` +
           `Refusing to publish with a version its maintainer has withdrawn.\n` +
           `Fix: release a babelfhir-ts version that passes parity, or un-deprecate one above.`,
