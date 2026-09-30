@@ -1,6 +1,6 @@
 # fhir-igs
 
-Publishes the org's shared FHIR Implementation Guide packages — `@max-health-inc/fhir-*` — to GitHub Packages, generated with [`babelfhir-ts`](https://www.npmjs.com/package/babelfhir-ts).
+Publishes the org's shared FHIR Implementation Guide packages — `@max-health-inc/fhir-*` — to GitHub Packages, generated with the babelfhir-ts generator, `@babelfhir-ts/codegen` on GitHub Packages (`generatorPackage` in `config.json`).
 
 **Always publishes with the latest `babelfhir-ts` that passed parity.** There is no pin. Each run resolves the version **once**, in the workflow's `setup` job, and hands that exact version to both the matrix builder and the generator — so a run can never key a package to one generator and build it with another.
 

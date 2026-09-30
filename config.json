@@ -1,4 +1,6 @@
 {
+  "//generatorPackage": "The babelfhir-ts generator, as published on GitHub Packages. Read by scripts/resolve-babelfhir.js, scripts/list-igs.js and the publish workflow; .npmrc maps its scope.",
+  "generatorPackage": "@babelfhir-ts/codegen",
   "displayLanguages": "en,de,fr,es,it",
   "exclude": [],
 
