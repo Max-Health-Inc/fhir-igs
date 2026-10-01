@@ -6,8 +6,8 @@
  * SINGLE SOURCE OF TRUTH: the IG list is derived from babelfhir-ts's validated
  * parity matrix (src/test/parity/parityConstants.ts → AVAILABLE_PACKAGES),
  * read from the published tarball of the babelfhir-ts release this run uses. That
- * release is the LATEST published one, resolved at run time — see babelfhirVersion().
- * Reading the matrix at that same tag is what keeps the published set equal to
+ * release is the newest that passed parity, resolved at run time — see babelfhirVersion().
+ * Reading the matrix from that same release is what keeps the published set equal to
  * what that exact generator validated. Previously a hand-maintained igs.json
  * duplicated the matrix and drifted (ae-research was marked r5 in parity but
  * defaulted to r4 here).
@@ -61,16 +61,11 @@ function babelfhirVersion() {
   return version;
 }
 
-/**
- * Newest babelfhir-ts release that passed stable parity.
- *
- * Delegates to the same resolver CI uses, so a local `npm run list` cannot
- * disagree with a real run about which release is publishable.
- */
+/** Same shared resolver and config CI uses, so a local `npm run list` agrees with a real run. */
 function latestPublishedVersion() {
-  const resolver = path.join(root, 'scripts', 'resolve-babelfhir.js');
-  const out = execFileSync(process.execPath, [resolver], { encoding: 'utf8' });
-  return out.trim();
+  const floor = typeof config.minParityValidation === 'number' ? ['--min-validation', String(config.minParityValidation)] : [];
+  const args = ['--yes', config.igTools, 'resolve-babelfhir', '--package', GENERATOR, '--min-supported', config.minSupportedGenerator, ...floor];
+  return execFileSync('npx', args, { cwd: root, encoding: 'utf8', shell: process.platform === 'win32' }).trim();
 }
 
 /**
@@ -108,7 +103,7 @@ function readMatrixArtifact(text) {
     // Refuse rather than guess: publishing the wrong IG set is worse than failing.
     throw new Error(
       `parity-matrix.json declares schemaVersion ${matrix.schemaVersion}, this publisher supports ` +
-        `${SUPPORTED_SCHEMA_VERSION}. Update scripts/list-igs.js before bumping the babelfhir-ts pin.`,
+        `${SUPPORTED_SCHEMA_VERSION}. Update scripts/list-igs.js to read it.`,
     );
   }
   const entries = (matrix.packages || []).map((p) => ({

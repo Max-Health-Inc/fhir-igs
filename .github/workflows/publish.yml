@@ -1,13 +1,14 @@
 name: Publish IG Packages
 
-# Generates each IG in igs.json with the PINNED babelfhir-ts (package.json) and
-# publishes it as @max-health-inc/fhir-<name> to GitHub Packages.
+# Generates each IG in babelfhir-ts's parity matrix with the newest generator
+# release that passed parity, and publishes it as @max-health-inc/fhir-<name>
+# to GitHub Packages.
 #
 # Idempotency: GitHub Packages does NOT preserve/return custom package.json
 # fields, so a build key stored in the manifest is invisible after publish. We
 # instead mark each published build with a `bk-<hash>` **dist-tag** (dist-tags
 # are returned by the registry) and skip when that tag is already present. So a
-# package is republished only when its build key — "<spec>|babelfhir@<pinned>|
+# package is republished only when its build key — "<spec>|babelfhir@<resolved>|
 # <flags>" — actually changes (new IG version, generator bump, or flag change).
 # Decoupled from babelfhir-ts's own release cadence.
 #
@@ -61,16 +62,18 @@ jobs:
       # "latest". A key containing "latest" would never change, so no IG would
       # ever be republished when the generator improves — the opposite of the
       # intent of tracking latest.
-      # Newest release that PASSED stable parity, not merely the newest on npm.
-      # One generator release becomes ~30 published packages here, and the parity
-      # gate lives in the generator's repo — see scripts/resolve-babelfhir.js.
-      # Fails closed: no parity result, no publish.
+      # Newest release that PASSED stable parity and is not deprecated, via the
+      # shared @max-health-inc/ig-tools resolver. Fails closed: no parity result, no publish.
       - name: Resolve babelfhir-ts (latest that passed parity)
         id: resolve
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN }}
         run: |
-          VERSION=$(node scripts/resolve-babelfhir.js --explain)
+          IG_TOOLS=$(node -p "require('./config.json').igTools")
+          GENERATOR=$(node -p "require('./config.json').generatorPackage")
+          MIN_SUPPORTED=$(node -p "require('./config.json').minSupportedGenerator")
+          FLOOR=$(node -p "require('./config.json').minParityValidation ?? ''")
+          VERSION=$(npx --yes "$IG_TOOLS" resolve-babelfhir --package "$GENERATOR" --min-supported "$MIN_SUPPORTED" ${FLOOR:+--min-validation $FLOOR} --explain)
           case "$VERSION" in
             [0-9]*.[0-9]*.[0-9]*) ;;
             *) echo "Unusable babelfhir-ts version: '$VERSION'" >&2; exit 1 ;;
