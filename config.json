@@ -2,7 +2,7 @@
   "//generatorPackage": "The babelfhir-ts generator, as published on GitHub Packages. Read by scripts/list-igs.js and the publish workflow; .npmrc maps its scope.",
   "generatorPackage": "@babelfhir-ts/codegen",
   "//igTools": "The shared resolver (@max-health-inc/ig-tools) picks the newest generator release that passed stable parity, is published and is not deprecated. Run via npx by the publish workflow and scripts/list-igs.js.",
-  "igTools": "@max-health-inc/ig-tools@^0.3.0",
+  "igTools": "@max-health-inc/ig-tools@^0.4.0",
   "//minSupportedGenerator": "Oldest generator release this publisher can use: parity-matrix.json, which scripts/list-igs.js reads, first shipped in 1.5.18.",
   "minSupportedGenerator": "1.5.18",
   "displayLanguages": "en,de,fr,es,it",
