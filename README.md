@@ -4,13 +4,13 @@ Publishes the org's shared FHIR Implementation Guide packages — `@max-health-i
 
 **Always publishes with the latest `babelfhir-ts` that passed parity.** There is no pin. Each run resolves the version **once**, in the workflow's `setup` job, and hands that exact version to both the matrix builder and the generator — so a run can never key a package to one generator and build it with another.
 
-"Latest that passed parity", not simply latest on npm. One generator release becomes ~30 published packages here, while the gate that decides whether a release actually works — 30 IGs against two external validators — runs in the generator's repo. `scripts/resolve-babelfhir.js` therefore picks the newest release with a recorded **stable parity result**:
+"Latest that passed parity", not simply latest on npm. One generator release becomes ~30 published packages here, while the gate that decides whether a release actually works — 30 IGs against two external validators — runs in the generator's repo. The shared resolver in [`@max-health-inc/ig-tools`](https://github.com/Max-Health-Inc/ig-tools) (`igTools` in `config.json`, run via `npx`) therefore picks the newest release with a recorded **stable parity result** that is published and not deprecated on npm:
 
 ```
 https://babelfhir-ts.github.io/parity-report/history-stable.json
 ```
 
-A hard parity failure leaves no parity data to publish, so no entry is written — absence *is* the "did not pass" signal. **It fails closed:** if nothing qualifies, the run stops rather than falling back to the newest npm release, because a silent fallback would defeat the point. `config.json → minParityValidation` adds an optional score floor for soft regressions; it is off by default (see the note in that file).
+A hard parity failure leaves no parity data to publish, so no entry is written — absence *is* the "did not pass" signal. **It fails closed:** if nothing qualifies, the run stops rather than falling back to the newest npm release, because a silent fallback would defeat the point. `config.json → minParityValidation` adds an optional score floor for soft regressions; it is off by default (see the note in that file). `minSupportedGenerator` is the oldest release that ships `parity-matrix.json`. A deprecation vetoes a release too: parity checks IG conformance, not that the generated code compiles, and 1.6.4 passed parity yet failed with TS2688.
 
 Consequences, by design:
 
@@ -20,7 +20,7 @@ Consequences, by design:
 
 ## Registry (single source of truth)
 
-The IG list is **derived from babelfhir-ts's validated parity matrix** (`src/test/parity/parityConstants.ts` → `AVAILABLE_PACKAGES`), read from the `parity-matrix.json` artifact babelfhir-ts commits and ships, fetched at the git tag of the release this run resolved. `scripts/list-igs.js` does this at CI time. Reading the matrix at that same tag is what keeps the published set equal to what that exact generator validated. Each entry → `@max-health-inc/fhir-<name>` at the IG's upstream version, generated for the FHIR version babelfhir validated it against.
+The IG list is **derived from babelfhir-ts's validated parity matrix** (`src/test/parity/parityConstants.ts` → `AVAILABLE_PACKAGES`), read from the `parity-matrix.json` artifact babelfhir-ts commits and ships in the published tarball of the release this run resolved. `scripts/list-igs.js` does this at CI time. Reading the matrix from that same release is what keeps the published set equal to what that exact generator validated. Each entry → `@max-health-inc/fhir-<name>` at the IG's upstream version, generated for the FHIR version babelfhir validated it against.
 
 `parity-matrix.json` is a **contract, not scraped source**. This script used to regex `parityConstants.ts` directly, which made a formatting change in another repository a silent break in publishing here. babelfhir-ts guards the artifact with a CI drift check and a unit test, and declares a `schemaVersion` — this publisher refuses to run on a version it does not understand rather than guess an IG set. The artifact ships from `babelfhir-ts` **1.5.18** onward, so tracking latest always finds it.
 
@@ -56,4 +56,4 @@ The packages are **public**, so any GitHub token with `read:packages` resolves t
 
 ## Adding an IG
 
-Add it to babelfhir-ts's parity matrix (`parityConstants.ts` → `AVAILABLE_PACKAGES`) so it's validated, release babelfhir-ts, then bump the `babelfhir-ts` pin in `package.json` here — the new IG is picked up automatically. To bump the generator for all IGs, bump the pin. To publish everything with the *current* pin (e.g. after a parity matrix change at the same version), run the workflow via `workflow_dispatch`.
+Add it to babelfhir-ts's parity matrix (`parityConstants.ts` → `AVAILABLE_PACKAGES`) so it's validated, release babelfhir-ts, and once that release passes parity the next run picks the new IG up automatically. To publish everything with the *current* generator (e.g. after a parity matrix change at the same version), run the workflow via `workflow_dispatch`.
