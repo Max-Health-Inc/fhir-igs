@@ -182,6 +182,8 @@ jobs:
           echo "Generated: $TGZ"
           rm -rf dist-ig && mkdir dist-ig
           tar xzf "$TGZ" -C dist-ig --strip-components=1
+          # The generated package depends on @babelfhir-ts clients, which live on GitHub Packages only.
+          cp .npmrc dist-ig/.npmrc
 
       # Nothing here compiled what it published. Parity gates the generator on IG
       # CONFORMANCE, which is a different question from whether the emitted
@@ -194,6 +196,8 @@ jobs:
         uses: babelfhir-ts/.github/typecheck-generated@aae253a3dbe9f7ff491b5e89e6913f649dc6d78e
         with:
           path: dist-ig
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN }}
 
       - name: Stamp name / version
         if: steps.decide.outputs.publish == 'true'
