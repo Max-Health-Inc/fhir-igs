@@ -193,7 +193,7 @@ jobs:
       - name: Typecheck the generated package
         if: steps.decide.outputs.publish == 'true'
         # BabelFHIR-TS is private now; this is the public copy. SHA-pinned.
-        uses: babelfhir-ts/.github/typecheck-generated@aae253a3dbe9f7ff491b5e89e6913f649dc6d78e
+        uses: babelfhir-ts/.github/typecheck-generated@d18335117a18a783c3a8a49d6e9f8ea3f9355fbc
         with:
           path: dist-ig
         env:
