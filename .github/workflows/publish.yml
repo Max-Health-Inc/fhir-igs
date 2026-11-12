@@ -32,6 +32,10 @@ on:
         description: 'IGs to publish (comma-separated names, or "all")'
         required: false
         default: 'all'
+      dry_run:
+        description: 'Generate and typecheck without publishing, and probe node/npm after a generator install'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -50,7 +54,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: '24'
+          node-version: '26'
 
       # Resolve the generator ONCE per run and hand the concrete version to every
       # downstream step. This repo tracks the latest release rather than pinning,
@@ -108,7 +112,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '24'
+          node-version: '26'
           registry-url: https://npm.pkg.github.com
           scope: '@max-health-inc'
 
@@ -146,7 +150,7 @@ jobs:
           # via curl (no npm/node — npm view segfaults on this runner). dist-tags
           # survive GH Packages; custom package.json fields do not.
           DT=$(curl -sf -H "Authorization: Bearer ${GH_TOKEN}" "https://npm.pkg.github.com/-/package/@max-health-inc%2ffhir-${{ matrix.name }}/dist-tags" 2>/dev/null || echo '{}')
-          if printf '%s' "$DT" | grep -q "\"$TAG\""; then
+          if [ "${{ inputs.dry_run }}" != "true" ] && printf '%s' "$DT" | grep -q "\"$TAG\""; then
             echo "$PKG already published for this build ($TAG) — skipping."
             echo "publish=false" >> "$GITHUB_OUTPUT"
             exit 0
@@ -199,6 +203,23 @@ jobs:
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN }}
 
+      - name: Probe node and npm after a generator install (dry run)
+        if: steps.decide.outputs.publish == 'true' && inputs.dry_run
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN }}
+        run: |
+          set -x
+          BABEL="${{ needs.setup.outputs.babelfhir }}"
+          GEN=$(node -p "require('./config.json').generatorPackage")
+          PROBE=$(mktemp -d)
+          cp .npmrc "$PROBE/.npmrc"
+          (cd "$PROBE" && npm init -y >/dev/null && npm install --foreground-scripts "$GEN@$BABEL")
+          node -e "console.log(process.versions.node, process.versions.v8)"
+          printf 'console.log("node <file> ok")\n' > "$PROBE/probe.mjs"
+          node "$PROBE/probe.mjs"
+          npm view "${{ steps.decide.outputs.pkg }}" dist-tags --json
+          npm view "${{ steps.decide.outputs.pkg }}" versions --json | tail -3
+
       - name: Stamp name / version
         if: steps.decide.outputs.publish == 'true'
         working-directory: dist-ig
@@ -206,14 +227,14 @@ jobs:
           npm pkg set name="${{ steps.decide.outputs.pkg }}" version="${{ steps.decide.outputs.version }}" publishConfig.registry="https://npm.pkg.github.com"
 
       - name: Publish to GitHub Packages
-        if: steps.decide.outputs.publish == 'true'
+        if: steps.decide.outputs.publish == 'true' && !inputs.dry_run
         working-directory: dist-ig
         run: npm publish
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN }}
 
       - name: Mark build-key dist-tag
-        if: steps.decide.outputs.publish == 'true'
+        if: steps.decide.outputs.publish == 'true' && !inputs.dry_run
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN }}
         run: npm dist-tag add "${{ steps.decide.outputs.pkg }}@${{ steps.decide.outputs.version }}" "${{ steps.decide.outputs.tag }}"
