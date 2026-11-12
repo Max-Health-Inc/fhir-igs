@@ -33,7 +33,7 @@ on:
         required: false
         default: 'all'
       dry_run:
-        description: 'Generate and typecheck without publishing, and probe node/npm after a generator install'
+        description: 'Generate and typecheck even when already published, without publishing'
         type: boolean
         default: false
 
@@ -116,11 +116,7 @@ jobs:
           registry-url: https://npm.pkg.github.com
           scope: '@max-health-inc'
 
-      # No `npm ci` — installing babelfhir-ts's native/postinstall deps (esbuild,
-      # fhirpath) under the runner's allow-scripts policy destabilizes node so
-      # later `node <file>`/npm calls segfault (exit 139). Run the generator via
-      # `npx --package <generatorPackage>@<resolved> babelfhir-ts` on demand instead — still an exact version,
-      # resolved once in `setup` rather than pinned in package.json.
+      # The generator runs through npx at the version resolved in `setup`; this repo declares no dependencies.
       - name: Restore tx-server ValueSet expansions
         uses: actions/cache@v4
         with:
@@ -146,9 +142,7 @@ jobs:
           echo "lang=$LANG" >> "$GITHUB_OUTPUT"
           echo "build key: $KEY  ->  dist-tag: $TAG"
 
-          # Already published for this exact build key? Read the registry dist-tags
-          # via curl (no npm/node — npm view segfaults on this runner). dist-tags
-          # survive GH Packages; custom package.json fields do not.
+          # Already published for this exact build key? dist-tags survive GH Packages; custom package.json fields do not.
           DT=$(curl -sf -H "Authorization: Bearer ${GH_TOKEN}" "https://npm.pkg.github.com/-/package/@max-health-inc%2ffhir-${{ matrix.name }}/dist-tags" 2>/dev/null || echo '{}')
           if [ "${{ inputs.dry_run }}" != "true" ] && printf '%s' "$DT" | grep -q "\"$TAG\""; then
             echo "$PKG already published for this build ($TAG) — skipping."
@@ -158,8 +152,7 @@ jobs:
 
           # Next FREE version >= max(BASE, existing versions), from the REST list.
           VERS=$(gh api "orgs/Max-Health-Inc/packages/npm/fhir-${{ matrix.name }}/versions" --paginate --jq '.[].name' 2>/dev/null | tr '\n' ' ' || true)
-          # Pure bash (no node — `node <file>` segfaults on these runners): max of
-          # base+existing, then bump patch until free.
+          # Max of base and existing, then bump the patch until free.
           VER=$(printf '%s\n' "$BASE" $VERS | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -t. -k1,1n -k2,2n -k3,3n | tail -1)
           while printf '%s\n' $VERS | grep -qx "$VER"; do
             IFS=. read -r A B C <<< "$VER"; VER="${A}.${B}.$((C + 1))"
@@ -202,23 +195,6 @@ jobs:
           path: dist-ig
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN }}
-
-      - name: Probe node and npm after a generator install (dry run)
-        if: steps.decide.outputs.publish == 'true' && inputs.dry_run
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.GH_PACKAGES_TOKEN }}
-        run: |
-          set -x
-          BABEL="${{ needs.setup.outputs.babelfhir }}"
-          GEN=$(node -p "require('./config.json').generatorPackage")
-          PROBE=$(mktemp -d)
-          cp .npmrc "$PROBE/.npmrc"
-          (cd "$PROBE" && npm init -y >/dev/null && npm install --foreground-scripts "$GEN@$BABEL")
-          node -e "console.log(process.versions.node, process.versions.v8)"
-          printf 'console.log("node <file> ok")\n' > "$PROBE/probe.mjs"
-          node "$PROBE/probe.mjs"
-          npm view "${{ steps.decide.outputs.pkg }}" dist-tags --json
-          npm view "${{ steps.decide.outputs.pkg }}" versions --json | tail -3
 
       - name: Stamp name / version
         if: steps.decide.outputs.publish == 'true'
